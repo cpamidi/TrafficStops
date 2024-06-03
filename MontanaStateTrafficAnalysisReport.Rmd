@@ -1,0 +1,643 @@
+---
+title: "Analysis of Traffic Stops in Montana"
+author: "Chandana Pamidi, Tejas Ganesh Naik, Ujwala Munigela, Yogeshwar Pullagurla"
+date: "2024-05-20"
+output: pdf_document
+---
+
+#### Introduction
+
+In this project, we will analyse on the patterns of traffic stops in the state of Montana across 9 years, from December 2008 to December 2017.
+This focused analysis aims to provide insights into law enforcement activity and potentially reveal any differences in how stops are conducted across the state.
+
+We mainly focus to analyse on the following questions through our study:
+
+1) Is there a statistically significant relationship between the age of subjects and the likelihood of receiving a warning during a stop?
+2) How does the likelihood of receiving a warning vary across different age groups (e.g., youngsters, middle-aged, old)?
+3) Is the mean age of the drivers who got arrested same as the mean age of driver got received warning ?
+4) Is the time of the day a factor in determining the outcome of the traffic stop?
+5) Are female drivers less at risk for violations compared to male drivers?
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(stats)
+library(lattice)
+library(reshape2)
+```
+
+
+
+```{r}
+
+# Load data from a CSV file
+data <- readRDS("wb225bk3255_mt_statewide_2023_01_26.rds")
+
+# Display the structure of the dataset
+str(data)
+
+```
+
+```{r}
+data
+```
+
+Then, we selected 17 columns to study and processed the corresponding filtered data for better and faster analysis.
+
+```{r}
+data_filtered <- data %>%
+  select(date, time, county_name, subject_sex, subject_age, citation_issued, warning_issued, arrest_made, outcome, frisk_performed, search_conducted, reason_for_stop, vehicle_make, vehicle_model, vehicle_type, vehicle_year,violation)
+```
+
+
+#### Linear Regression
+Introduction:
+In this section we would like to study:
+1.) Is there a statistically significant relationship between the age of subjects and the likelihood of receiving a warning during a stop?
+2.) Are there any outliers in the data?
+3.) Is there any influence or leverage of some instances?
+5.) Does the data follow Equal variance condition?
+6.) Does the data follow normal distribution?
+### Linear Regression
+
+Null Hypothesis (H0): There is no association(linear relationship) between subject age groups and arrest made during the incidents.
+
+Alternative Hypothesis (H1): There is an association(linear relationship) between subject age groups and arrest made during the incidents.
+
+## Data Processing
+```{r}
+data_filtered <- data_filtered %>%
+  drop_na()
+colSums(is.na(data_filtered))
+```
+```{r}
+ggplot(data_filtered, aes(x=subject_age)) + 
+  geom_density(fill = "orange", alpha=0.5) +
+  labs(title = "Density Plot of Driver Age", x="Age", y="Density")
+```
+
+```{r}
+ggplot(data_filtered, aes(x=warning_issued)) + 
+  geom_density(fill = "purple", alpha=0.5) +
+  labs(title = "Density Plot of Warnings issued", x="Density", y="Density")
+```
+
+
+```{r}
+# Calculate the total number of stops
+total_warnings <- nrow(data_filtered)
+
+# Calculate the proportion of warnings issued by subject age
+proportion_by_age <- prop.table(table(data_filtered$subject_age)) * 100
+
+# Print the proportion by age
+print(proportion_by_age)
+```
+
+
+```{r}
+# Create a bar plot
+barplot(proportion_by_age, 
+        main = "Proportion of Population by Subject Age",
+        ylab = "Proportion (%)",
+        xlab = "Subject Age",
+        col = "skyblue",
+        ylim = c(0, 5))  # Adjust the y-axis limits if needed
+```
+
+
+```{r}
+# Create a contingency table
+linear_reg_table <- table(data_filtered$subject_age, data_filtered$warning_issued)
+linear_reg_table
+```
+
+```{r}
+# Convert the contingency table into a data frame
+linear_reg_table_df <- as.data.frame.table(linear_reg_table)
+
+# Rename the columns for clarity
+names(linear_reg_table_df) <- c("Subject_Age", "Warning_Issued", "Frequency")
+
+linear_reg_table_df
+```
+
+
+```{r}
+# Filter rows where Warning_Issued is TRUE
+filtered_linear_reg_table_df <- linear_reg_table_df %>% filter(Warning_Issued == TRUE)
+
+# Print the filtered data frame
+print(filtered_linear_reg_table_df)
+```
+
+```{r}
+# Ensure 'Subject_Age' and 'Frequency' are numeric
+filtered_linear_reg_table_df$Subject_Age <- as.numeric(as.character(filtered_linear_reg_table_df$Subject_Age))
+filtered_linear_reg_table_df$Frequency <- as.numeric(as.character(filtered_linear_reg_table_df$Frequency))
+```
+
+## Analysis
+```{r}
+# Create a scatterplot with jittering
+ggplot(filtered_linear_reg_table_df, aes(x = Subject_Age, y = Frequency)) +
+  geom_point(position = position_jitter(width = 0.1, height = 0.1)) +
+  labs(title = "Scatterplot of Subject Age vs. Warnings Issued",
+       x = "Subject Age", y = "Warnings Issued")
+```
+
+
+```{r}
+plot(filtered_linear_reg_table_df$Subject_Age , filtered_linear_reg_table_df$Frequency, main="Scatterplot")
+abline(lm(Subject_Age ~ Frequency, data = filtered_linear_reg_table_df),col="red")
+```
+
+```{r}
+# Fit the linear regression model
+model <- lm(filtered_linear_reg_table_df$Subject_Age ~ filtered_linear_reg_table_df$Frequency)
+```
+
+```{r}
+# Summary of the model
+summary(model)
+```
+
+With this table we can construct the least square regression line:
+Subject_Age=75.8774446-0.0031548×Frequency
+
+Where Frequency is the number of warnings issued corresponding to age.
+
+# Prediction and prediction errors
+A scatterplot with the least squares line laid on top.
+```{r}
+# Assuming filtered_contingency_df is your dataframe and it has columns 'Subject_Age' and 'Frequency'
+# Create the scatter plot with regression line
+ggplot(data = filtered_linear_reg_table_df, aes(x = Frequency, y = Subject_Age)) +
+  geom_point() + # Scatter plot
+  geom_smooth(method = "lm", se = FALSE, color = "blue") + # Regression line
+  labs(title = "Scatter Plot with Regression Line",
+       x = "Frequency",
+       y = "Subject Age") +
+  theme_minimal()
+```
+
+This line can be used to predict $y$ at any value of $x$. When 
+predictions are made for values of $x$ that are beyond the range of the observed
+data, it is referred to as *extrapolation* and is not usually recommended. 
+However, predictions made within the range of the data are more reliable. 
+They're also used to compute the residuals.
+
+
+# Model Diagnostics
+```{r}
+correlation_coefficient <- cor(filtered_linear_reg_table_df$Subject_Age , filtered_linear_reg_table_df$Frequency)
+correlation_coefficient
+```
+
+```{r}
+sum(residuals(model)^2)
+```
+
+1.) Is there a statistically significant relationship between the age of subjects and the likelihood of receiving a warning during a stop?\\
+With correlation coefficient = -0.6879639 and from the above plots we can say that subject_age and number of Warnings issued are negatively correlated and have relationship is moderate because correlation coefficient is not much closer to -1.
+
+
+# To check Equal Variance
+```{r}
+xyplot(resid(model) ~ fitted(model), data=filtered_linear_reg_table_df, type=c("p", "r"))
+```
+
+5.) Does the data follow Equal variance condition?
+From the plot Equal Variance is not met.
+
+# To check Normal Errors
+```{r}
+histogram(~residuals(model), width=50)
+```
+
+```{r, eval = FALSE}
+qqmath(~resid(model))
+ladd(panel.qqmathline(resid(model)))
+```
+
+
+2.) Are there any outliers in the data?
+3.) Is there any influence or leverage of some instances?
+4.) Does the data follow normal distribution?
+From the plot we can say that the model is normally distributed with few outliers but there is no high influence or high leverage.
+
+## Linear Regression Assumptions
+Random Sampling : The data is collected randomly and this conditions is assumed to be met.
+Independence : This condition is also assumed to be met.
+From linear_reg_table, we can also see that expected cell frequencies is also met.
+```{r}
+linear_reg_table
+```
+
+
+#### Chi-Square
+Introduction:
+In this section we would like to study:
+1.) How does the likelihood of receiving a warning vary across different age groups (e.g., youngsters, middle-aged, old)?
+2.) Are there specific age ranges that are more likely to receive warnings compared to others?
+3.) How does the rate of warnings issued to younger subjects compare to the rate of warnings issued to older subjects?
+
+
+### Chi-Square Test
+
+Null Hypothesis (H0): There is no association between subject age groups and arrest made during the incidents.
+
+Alternative Hypothesis (H1): There is an association between subject age groups and arrest made during the incidents.
+
+## Categorize Age groups
+```{r}
+
+chi_sq_data <- data_filtered %>%
+  mutate(subject_age = case_when(
+    subject_age < 35 ~ "Younger",
+    subject_age >= 35 & subject_age <= 55 ~ "Middle-aged",
+    subject_age > 55 ~ "Older"
+  ))
+```
+
+
+```{r}
+# Calculate the total number of stops
+total_warnings <- nrow(chi_sq_data)
+
+# Calculate the proportion of warnings issued by subject age
+proportion_by_age_group <- prop.table(table(chi_sq_data$subject_age)) * 100
+
+# Print the proportion by age
+print(proportion_by_age_group)
+```
+
+With approximately 37.06% falling within the middle-aged category, this segment represents a significant portion of the population. In contrast, the older age group, comprising about 18.14%, constitutes a smaller proportion. Conversely, the younger age group, with a proportion of approximately 44.78%, emerges as the largest segment, indicating a substantial presence within the population. Collectively, these proportions depict the age structure of the population, crucial for understanding demographic trends and informing various societal and policy considerations.
+
+```{r}
+# Create a bar plot
+barplot(proportion_by_age_group, 
+        main = "Proportion of Population by Subject Age Group",
+        ylab = "Proportion (%)",
+        xlab = "Subject Age",
+        col = "yellow",
+        ylim = c(0, 50))  # Adjust the y-axis limits if needed
+```
+
+```{r}
+# Create a contingency table
+chi_sq_table <- table(chi_sq_data$subject_age, chi_sq_data$warning_issued)
+chi_sq_table
+```
+
+1.) How does the likelihood of receiving a warning vary across different age groups (e.g., youngsters, middle-aged, old)?
+Out of 410264 young drivers, 73.16% received warning.
+Out of 341298 middle-aged drivers, 72.97% received warning.
+Out of 165853 older drivers, 74.92% received warning.
+
+
+2.) Are there specific age ranges that are more likely to receive warnings compared to others?
+From this data we can say that middle-aged people more likely to receive warnings compared others.
+
+## Analysis
+```{r}
+# Perform the chi-square test of independence
+chi_sq_test <- chisq.test(chi_sq_table)
+
+# Print the result
+print(chi_sq_test)
+```
+Given the p-value is significantly less than 0.05, we reject the null hypothesis. This means: There is strong evidence to suggest that there is a significant association between the age groups (subject_age) and whether a warning was issued (warning_issued).
+
+```{r}
+# Convert the contingency table into a data frame
+chi_sq_table_df <- as.data.frame.table(chi_sq_table)
+
+# Rename the columns for clarity
+names(chi_sq_table_df) <- c("Subject_Age", "Warning_Issued", "Frequency")
+
+chi_sq_table_df
+```
+
+
+```{r}
+# Ensure 'Frequency' is numeric
+chi_sq_table_df$Frequency <- as.numeric(as.character(chi_sq_table_df$Frequency))
+```
+
+The below bar graph depicts the clear relationship between the warnings_issued and the subject_age of the driver 
+```{r}
+# Create a bar plot
+ggplot(chi_sq_table_df, aes(x = Subject_Age, y = Frequency, fill = Warning_Issued)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Bar Plot of Warning Issued by Subject Age Group",
+       x = "Subject Age Group",
+       y = "Frequency",
+       fill = "Warning Issued") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+```
+
+3.) How does the rate of warnings issued to younger subjects compare to the rate of warnings issued to older subjects?
+We can see that younger people have received warnings more the 2x the warnings received by older people.
+
+## Chi - Square Assumptions:
+Random Sampling : The data is collected randomly and this conditions is assumed to be met.
+Independence : This condition is also assumed to be met.
+Counted Data Condition: this condition is met as we have frequencies of individual categories.
+From chi_sq_table, we can also see that expected cell frequencies is also met.
+```{r}
+chi_sq_table
+```
+
+# Is the mean age of the drivers who got arrested same as the mean age of driver got received warning ?
+
+Considering that an arrest is more severe than a warning, it is likely possible that a driver would have received a warning before getting arrested. If younger population is more likely to be arrested, the law can enforce programs in schools to educate students on violations and address the specific behavior.
+
+Since only arrests and warnings are studied, we have removed the traffic stops against citations
+
+```{r}
+arrests_warning_filtered <- data_filtered %>% 
+  filter(outcome %in% c("arrest", "warning")) 
+
+```
+
+Analyzing the columns "subject_age" and "outcome", we observe that age is numerical, continuous data where outcome is categorical data with only 2 values.
+
+```{r}
+ggplot(arrests_warning_filtered, aes(x = subject_age)) +
+  geom_density(fill = "lightpink", alpha = 0.5) +
+  labs(title = "Density Plot of Driver Ages", x = "Age", y = "Density") 
+```
+
+The graph is right-skewed with two peaks, and the age of majority of the drivers are in the range of 20-50 years.
+
+```{r}
+ggplot(arrests_warning_filtered, aes(x = outcome)) +
+  geom_bar(fill = "lightgreen", color = "black") +
+  labs(title = "Distribution of Outcomes Issued", x = "Outcome Issued", y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+# To run the test, a few assumptions are made:
+
+1) Data is sampled randomly
+2) Data is independent of one another
+3) Large sample size
+
+# Hypothesis
+
+Problem Statement : The average age of drivers involved in traffic stops that result in arrests does not differ from the average age of drivers involved in stops that result in warnings. 
+
+Null Hypothesis : True difference in means between group warning and group arrest is equal to 0
+
+Alternate Hypothesis : True difference in means between group warning and group arrest is not equal to 0. 
+
+2 tests are run to study, t-test and anova
+
+#### Method 1 : T - test
+
+```{r}
+arrests_warning_test <- t.test(subject_age ~ outcome, data = arrests_warning_filtered)
+print(arrests_warning_test)
+```
+
+```{r}
+bwplot(outcome ~ subject_age, data=arrests_warning_filtered)
+
+```
+
+Interpretation: Since 0 does not lie in the confidence interval, the difference in mean can never be 0, therefore rejecting the null hypothesis. The average age of drivers involved in traffic stops that result in arrests differs significantly from the average age of drivers involved in stops that result in warnings.
+
+
+#### Method 2 : Anova
+
+
+```{r}
+
+anova_arrests_warning_anova <- aov(subject_age ~ outcome, data = arrests_warning_filtered)
+summary(anova_arrests_warning_anova)
+
+TukeyHSD(anova_arrests_warning_anova)
+```
+
+Interpretation: With very high f-value and very less p-value, the anova results are rejecting the null hypothesis. The difference in the mean is nearly 4.2 years and we are 95% confident that the difference in the age lies between 3.95 to 4.45 years.
+
+
+# Is the time of the day a factor in determining the outcome of the traffic stop?
+
+To ease the analysis, we have grouped the time such that all the traffic stops that have occurred in an hour will be group to it's corresponding hour. For example, if the traffic stop is issued at "02:45:89", the value under the column "hour" will be 2. Also we have considered only the one violated against every event that has occurred, assuming that the first violation entered has the highest severity.
+
+```{r}
+
+data_filtered$hour <- hour(data_filtered$time)
+remove_alpha_rows <- function(data) {
+  alpha_rows <- grep("^[a-zA-Z]", data$violation)
+  if (length(alpha_rows) > 0) {
+    data <- data[-alpha_rows, , drop = FALSE]
+  }
+  return(data)
+}
+
+retrieve_values_until_pipe <- function(data) {
+  split_values <- strsplit(data$violation, "|", fixed = TRUE)
+  data$violation <- sapply(split_values, "[[", 1)
+  return(data)
+}
+
+data_filtered <- remove_alpha_rows(data_filtered)
+#mt_data_filtered$violation_code <- substring(mt_data_filtered$violation, 1, 3)
+data_filtered <- retrieve_values_until_pipe(data_filtered)
+```
+
+
+Distribution of traffic stops by hour of the day
+
+```{r}
+ggplot(data_filtered, aes(x = hour)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  labs(title = "Distribution of Traffic Stops by Hour of the Day", x = "Hour", y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+To further study the time of the day, we have to group the time into 4 categories, namely, Night, Morning, Afternoon and Evening.
+
+```{r}
+data_filtered$hour_category <- cut(data_filtered$hour, breaks = c(-Inf, 6, 12, 17, 20, Inf), labels = c("Night", "Morning", "Afternoon", "Evening", "Night"))
+```
+
+```{r}
+summary(data_filtered)
+```
+
+Since there are no records of summons issued, lets remove the label summons from outcome column.
+
+
+```{r}
+# Drop unused levels from the factor
+data_filtered$outcome <- droplevels(data_filtered$outcome)
+print(unique(data_filtered$outcome))
+
+```
+
+
+```{r}
+summary(data_filtered)
+```
+
+Considering that the time of the day can be a factor in determining the outcome of the traffic stop, we have to study the columns "hour_category" and "outcome", where the former is categorical and the latter is also categorical with 3 values.
+
+```{r}
+ggplot(data_filtered, aes(x = hour_category)) +
+  geom_bar(fill = "lightblue", color = "black") +
+  labs(title = "Distribution of Traffic Stops by Time of Day", x = "Time of Day", y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+# To run the test, a few assumptions are made:
+
+1) Data is sampled randomly
+2) Data is independent of one another
+3) Large sample size
+
+# Hypothesis
+
+Problem Statement : The time of the day is not a factor in determining the outcome of the traffic stop.
+
+Null Hypothesis : The time of the day is not a factor in determining the outcome of the traffic stop.
+
+Alternate Hypothesis : The time of the day is a factor in determining the outcome of the traffic stop.
+
+
+Chi-square test
+
+```{r}
+time_outcome_table <- table(data_filtered$hour_category, data_filtered$outcome)
+time_outcome_table
+chisq.test(time_outcome_table)
+```
+
+Interpretation: With a p-value even less than 0.0001, we reject the null hypothesis. The time of the day is a factor in determining the outcome of the traffic stop.
+
+# Visualization
+
+Using a stacked bar plot, we can visualize the relationship between the time of the day and the outcome of the traffic stop.
+
+```{r}
+barplot(time_outcome_table, main = "Stacked Bar Plot of Time of Day vs. Outcome", col = c("lightblue", "lightgreen", "lightpink"))
+```
+
+Using a grouped bar plot, we can visualize the relationship between the time of the day and the outcome of the traffic stop.
+
+```{r}
+ggplot(data_filtered, aes(x = hour_category, fill = outcome)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Grouped Bar Plot of Time of Day vs. Outcome", x = "Time of Day", y = "Frequency") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+
+Using a mosaic plot, we can visualize the relationship between the time of the day and the outcome of the traffic stop.
+
+```{r}
+mosaicplot(time_outcome_table, main = "Mosaic Plot of Time of Day vs. Outcome", color = TRUE)
+```
+
+Using a heat map, we can visualize the relationship between the time of the day and the outcome of the traffic stop.
+
+```{r}
+time_melted <- melt(time_outcome_table)
+
+# Plotting the heatmap
+ggplot(time_melted, aes(x=Var2, y=Var1, fill=value)) +
+  geom_tile() +
+  scale_fill_gradient(low="yellow", high="red") +
+  labs(title="Heatmap of Time of Day and Outcome", x="Outcome", y="Time of Day") +
+  theme_minimal()
+```
+
+For this hypothesis, there is a large skew in the data, with most of the traffic stops occurring in the morning and afternoon. This could be due to various factors such as rush hour traffic, school zones, and work schedules. 
+
+The outcome of the traffic stops is also skewed, with most stops resulting in warnings and citations. 
+
+The chi-square test results indicate that the time of the day is a factor in determining the outcome of the traffic stop. This could be due to various factors such as law enforcement practices, traffic patterns, and driver behavior at different times of the day. 
+
+But given the skew in the data, further analysis is needed to determine the specific factors that influence the outcome of traffic stops at different times of the day. As none of the plots are showing a clear relationship between the time of the day and the outcome of the traffic stop, further analysis is needed to understand the underlying patterns and trends in the data.
+
+# Are female drivers less at risk for violations compared to male drivers?
+
+```{r}
+library(ggplot2)
+
+ggplot(data_filtered, aes(x = subject_sex)) +
+  geom_bar(fill = "purple") +
+  labs(title = "Distribution of Subject Sex", x = "Subject Sex", y = "Count") +
+  theme_minimal()
+
+```
+
+
+## To run the test, we have made a few assumptions. They are:
+
+1) We have randomly sampled data.
+2) Data is independent of one another
+3) We have Large sample size of data
+
+## Hypothesis
+
+Null Hypothesis : Female drivers are more at risk for violations compared to male drivers.
+
+Alternate Hypothesis : Female drivers are less at risk for violations compared to male drivers.
+
+```{r}
+risk_table <- table(data_filtered$subject_sex, data_filtered$outcome)
+columns_with_zeros <- apply(risk_table, 2, function(col) all(col == 0))
+risk_table <- risk_table[, !columns_with_zeros]
+print(risk_table)
+chi_sq_test <- chisq.test(risk_table)
+print(chi_sq_test)
+```
+Interpretation: With a very small p-value as shown in the results above, we can reject the null hypothesis, and conclude that female drivers are less at risk for violations compared to male drivers.
+
+# Visualizations
+
+A mosaic plot is useful for visualizing the relationship between Subject Sex and Outcome.
+
+```{r}
+mosaicplot(risk_table, main="Mosaic Plot of Subject Sex and Outcome", 
+           xlab="Outcome", ylab="Subject Sex", color=TRUE)
+```
+
+A bar plot can also be helpful to visualize the frequencies of these categories.
+
+```{r}
+# Converting the table to a data frame
+risk_df <- as.data.frame(risk_table)
+
+# Plotting using ggplot2
+library(ggplot2)
+ggplot(risk_df, aes(x=Var2, y=Freq, fill=Var1)) +
+  geom_bar(stat="identity", position="dodge") +
+  labs(title="Bar Plot of Subject Sex and Outcome", x="Outcome", y="Frequency") +
+  theme_minimal()
+
+```
+
+Heatmaps are also great visualiztion tool that can reveal patterns and relationships between these variables that may not be immediately apparent in the data.
+
+```{r}
+# Melting the table
+risk_melted <- melt(risk_table)
+
+# Plotting the heatmap
+ggplot(risk_melted, aes(x=Var2, y=Var1, fill=value)) +
+  geom_tile() +
+  scale_fill_gradient(low="blue", high="red") +
+  labs(title="Heatmap of Subject Sex and Outcome", x="Outcome", y="Subject Sex") +
+  theme_minimal()
+```
+
+For this hypothesis, the data shows a significant skew, with most outcomes being either warnings or citations. The visualizations also clearly indicate that males have a higher number of violations and are at greater risk compared to females, corroborating the chi-square test results.
